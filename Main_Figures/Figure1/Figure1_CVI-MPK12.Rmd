@@ -1,0 +1,70 @@
+---
+title: "Figure 1. Collection locations of Arabidopsis thaliana Santo Antao (CVI) and Morocco"
+author: "Ahmed Elfarargi"
+date: "2023-01-31"
+output: html_notebook
+---
+
+# Load required R libraries
+```{r setup, include=TRUE, message=FALSE, warning=FALSE,}
+library(ggmap)
+library(grid)
+```
+
+### Figure 1
+```{r, message=FALSE, warning=FALSE, fig.width= 10, fig.height= 7, class.source = 'fold-show'}
+
+#==============================================================================
+# Read data
+#==============================================================================
+SA_MOR_GEO <- read.csv("SANTO_MOR_coordinates.csv", header = TRUE, sep = ",", quote = "\"", dec = ".")
+
+#==============================================================================
+# Set the coordinates for both SA and MOR
+#==============================================================================
+mor_cvi_bbox <- c(bottom = 14.5, top = 37 , right = -1, left = -25.5)
+
+#==============================================================================
+# Get the main map
+#==============================================================================
+main_map <- get_stamenmap(bbox = mor_cvi_bbox, zoom = 8, force = TRUE, maptype = "toner-background") 
+
+#==============================================================================
+# Plot the main map
+#==============================================================================
+fig1 <- ggmap(main_map) + geom_point(aes(x = Longitude, y = Latitude, color=Color), data=SA_MOR_GEO, size = 2) + labs(x = 'Longitude', y = 'Latitude') + scale_color_manual(values=c("#0072B2", "#009E73")) + theme(panel.grid.minor = element_blank(), panel.grid.major = element_blank(), panel.background = element_rect(fill='black',colour ='black'), plot.background = element_blank(), plot.margin=unit(c(0,0,0,0), "null"), axis.ticks.length = unit(0, "pt"), panel.spacing = unit(2, "lines"), plot.title = element_blank(), legend.position = "none") + geom_rect(aes(xmin = -25.5, xmax = -24.5, ymin = 16.5, ymax = 17.4), color = "red", inherit.aes = FALSE, fill = NA, linetype = 6)
+
+fig1
+
+#==============================================================================
+# Inset: set the coordinates for SA
+#==============================================================================
+santo_bbox <- c(bottom = 16.5, top = 17.2 , right = -24.5, left = -25.5)
+santo_map <- get_stamenmap(bbox = santo_bbox, zoom = 11, force = TRUE, maptype = "toner-background") 
+ggmap(santo_map)
+
+#==============================================================================
+# Subset for SANTO
+#==============================================================================
+sa_data <- SA_MOR_GEO[!(SA_MOR_GEO$Population=="MOR"),]
+
+#==============================================================================
+# Plot the inset map
+#==============================================================================
+p_santo <- ggmap(santo_map) + geom_point(aes(x = Longitude, y = Latitude, color=Population), data=sa_data, size = 2) + labs(x = 'Longitude', y = 'Latitude') +  scale_color_manual(values="#0072B2") + theme(panel.spacing = unit(2, "lines")) + theme(legend.position = "none") + theme(axis.title = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(), axis.ticks.length = unit(0, "pt"), plot.margin=unit(c(0,0,0,0), "null"), panel.border = element_rect(colour = "red", fill=NA, size=2, linetype = 6))
+
+p_santo
+
+#==============================================================================
+# Plot both main + inset maps
+#==============================================================================
+fig1 + inset(ggplotGrob(p_santo), xmin = -25.5, xmax = -15, ymin = 25, ymax = 35)
+
+#==============================================================================
+# Save final figure and edit with adding names and migeration arrow
+#==============================================================================
+pdf(file = "Figure1.pdf",width = 8, height =5)
+fig1 + inset(ggplotGrob(p_santo), xmin = -25.5, xmax = -13, ymin = 25, ymax = 35)
+dev.off()
+
+```
