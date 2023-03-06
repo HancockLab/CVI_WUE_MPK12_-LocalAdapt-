@@ -1,0 +1,183 @@
+---
+title: "Figure 5. Evolutionary history of water-use efficiency variation"
+author: "Ahmed Elfarargi"
+date: "2023-01-31"
+output: html_notebook
+---
+
+## Load required R libraries
+```{r setup, include=TRUE, message=FALSE, warning=FALSE,}
+library(ggplot2)
+library(ggmap)
+library(ggrepel)
+library(scatterpie)
+```
+
+### Figure 5A - Estimated allele ages (inferred in RELATE) versus allele frequencies of variants with major effects estimated from GWA mapping of average WUE.
+```{r, message=FALSE, warning=FALSE, fig.width= 12, fig.height= 4, class.source = 'fold-show'}
+
+#==============================================================================
+# Read combined data from Figure3 and estimated allele age from RELATE
+#==============================================================================
+fig5a_data <- read.table("average_wue_lmm_bslmm_alleleage_majoreff.txt",header=T,sep="\t")
+
+#==============================================================================
+# Plot Figure5A
+#==============================================================================
+figure5a <- fig5a_data %>% ggplot(aes(x = LowerAge, y = AF)) + geom_point(aes(color=eff_bslmm, shape=Impact),alpha = 0.8,  size=4) + scale_shape_manual(values = c("HIGH" = 17,'MODERATE' = 15,'MODIFIER' = 16)) + scale_color_viridis_c(option = "turbo") + labs(shape="Impact", colour="Effect size") + scale_x_continuous(limits = c(0, 2200)) + theme(axis.line = element_line(size=1, colour = "black"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_rect(colour = "black", fill=NA, size=1), panel.background = element_blank(), axis.ticks.length=unit(0.3,"cm")) + theme(axis.text = element_text(color="black", size=15)) + theme(axis.title = element_text(color="black", size=17)) + theme(panel.background = element_rect(fill = 'white')) + theme(panel.background = element_rect(fill = 'transparent', colour = "white"), legend.key = element_rect(fill = NA, colour = NA), legend.position = "right", legend.direction = "vertical", plot.background = element_rect(fill='transparent', color=NA), legend.background = element_rect(fill='white'), legend.box.background = element_rect(fill='white')) + ylab("Allele frequency") + xlab("Estimated allele age (Years)") + geom_text_repel(aes(LowerAge, AF, label = GeneName), size=4, force=0.5, segment.size = 0.5, arrow = arrow(length = unit(0.01, 'npc')), fontface = 'bold.italic', box.padding = unit(0.35, "lines"), point.padding = unit(0.5, "lines"), segment.color = 'grey50',max.overlaps = Inf) + theme(legend.title=element_text(size=15), legend.text=element_text(size=13))
+
+figure5a
+
+ggsave(file = "Figure5A.pdf", height=4, width = 12, units = "in", encoding="MacRoman")
+figure5a
+dev.off() 
+
+```
+
+### Figure 5B - Spatial distribution of MPK12 G53R in Santo Antão
+```{r, message=FALSE, warning=FALSE, fig.width= 8, fig.height= 4,class.source = 'fold-show'}
+
+#==============================================================================
+# Read data
+#==============================================================================
+SANTO_GEO <- read.table("MPK12coord_piemap.txt", header = TRUE, sep = "\t")
+SANTO_GEO$Radius=SANTO_GEO$Radius /3
+
+#==============================================================================
+# Draw the map
+#==============================================================================
+lat <- c(17.09, 17.125)
+lon <- c(-25.1, -25.01)
+bbox <- ggmap::make_bbox(lon = lon, lat = lat, f = 0)
+SANTO_MAP <- get_stamenmap(bbox, zoom = 15, maptype = "toner-background")
+
+#==============================================================================
+# Plot the map
+#==============================================================================
+Figure5B <- ggmap(SANTO_MAP) + labs(x = 'Longitude', y = 'Latitude') + geom_scatterpie(aes(x=Longitude, y=Latitude, group=Region,r=Radius), data=SANTO_GEO, cols=c('Ancestral','Derived'),color=NA) + scale_fill_manual(labels = c('Ancestral','Derived'), values = c("#68228B", "#FFB90F"))+ labs(fill = "MPK12 Allele")+ geom_scatterpie_legend(SANTO_GEO$Radius, x=-25.025, y=17.12, n=5, labeller= function(x) (x/0.005*10)*3) + theme_light() + theme(panel.background = element_rect(fill = 'transparent', colour = "white"), legend.key = element_rect(fill = NA, colour = NA), legend.position = c(.3, .035), legend.direction = "horizontal", legend.justification = c(0, 0), legend.box.just = "left", plot.background = element_rect(fill='transparent', color=NA), legend.background = element_rect(fill='white'), legend.box.background = element_rect(fill='white')) + annotate(geom="text", x=-25.089, y=17.117, label="Espongeiro", color="black", size = 4) + annotate(geom="text", x=-25.077, y=17.104, label="Ribeira", color="black", size = 4) + annotate(geom="text", x=-25.061, y=17.101, label="Cova", color="black", size = 4) + annotate(geom="text", x=-25.041, y=17.1011, label="Figueira", color="black", size = 4) + annotate(geom="text", x=-25.02, y=17.104, label="Pico", color="black", size = 4)
+
+Figure5B
+
+#==============================================================================
+# Save figure5b
+#==============================================================================
+pdf(file = "Figure5B.pdf",width = 8, height = 4)
+Figure5B
+dev.off()
+
+```
+
+### Figure 5C - Marginal genealogical tree estimated in RELATE for MPK12 G53R
+```{bash,eval=FALSE, class.source = 'fold-show'}
+#!/bin/bash
+
+RELATE="/path_to_RELATE/Relate"
+
+bp=18947614
+
+#==============================================================================
+# (1) Relate - Inferring the genealogical history of MPK12 G53R
+#==============================================================================
+# Run RELATE
+${RELATE}/bin/Relate \
+--mode All \
+--haps chr2_SantoAntao_haploid.haps \
+--sample chr2_SantoAntao_haploid.sample \
+--map chr2_recmap.map \
+--memory 20 --coal SA_relate_popsize.coal -m 2.245e-09 \
+-o  chr2_relate
+
+# SampleBranchLengths (--format a)
+${RELATE}/scripts/SampleBranchLengths/SampleBranchLengths.sh \
+-i chr2_relate \
+-o chr2_relate_resample200 \
+-m 2.245e-09 \
+--coal SA_relate_popsize.coal \
+--format a \
+--num_samples 200 \
+--first_bp ${bp} \
+--last_bp ${bp} \
+--seed 1 
+
+# TreeViewMutation
+${RELATE}/scripts/TreeView/TreeViewMutation.sh \
+--haps chr2_SantoAntao_haploid.haps \
+--sample chr2_SantoAntao_haploid.sample \
+--anc chr2_relate.anc \
+--mut chr2_relate.mut \
+--poplabels SantoAntao_poplabels.txt \
+--bp_of_interest ${bp} \
+--years_per_gen 1 \
+-o treeview_mutation_MPK12
+
+# TreeViewSample
+${RELATE}/scripts/TreeView/TreeViewSample.sh \
+--haps chr2_SantoAntao_haploid.haps \
+--sample chr2_SantoAntao_haploid.sample \
+--anc chr2_relate_resample200.anc \
+--mut chr2_relate_resample200.mut \
+--dist chr2_relate_resample200.dist \
+--poplabels SantoAntao_poplabels.txt \
+--bp_of_interest ${bp} \
+--years_per_gen 1 \
+-o treeview_sample_MPK12
+
+#==============================================================================
+# (2) CLUES - Inference of selection and allele frequency trajectory for MPK12 (Chr2:18947614)
+# Output used to plot the allele frequency trajectory as shown in Supplementary Figure S14
+#==============================================================================
+clues_inference="/path_to_clues/clues"
+timeBins="/path_to_timebins/timebins_2epochs.txt"
+
+# Get SampleBranchLengths outputs used in CLUES
+${RELATE}/scripts/SampleBranchLengths/SampleBranchLengths.sh \
+-i chr2_relate \
+-o chr2_relate_resample200_CLUES \
+-m 2.245e-09 \
+--coal SA_relate_popsize.coal \
+--format b \
+--num_samples 200 \
+--first_bp ${bp} \
+--last_bp ${bp} \
+--seed 1 
+
+# Run CLUES
+python ${clues_inference}/inference.py \
+--times chr2_relate_resample200_CLUES \
+--popFreq 0.43 \
+--tCutoff 5000 \
+--timeBins ${timeBins} \
+--coal SA_relate_popsize.coal \
+--sMax 1 \
+--df 100 \
+--dom 0 \
+--out chr2_MPK12_inference
+
+```
+
+### Figure 5D - A model of the origin and spread of the MPK12 G53R variant based on the genealogical inference in Figure5C
+```{r, message=FALSE, warning=FALSE, fig.width= 4, fig.height= 2, class.source = 'fold-show'}
+
+#==============================================================================
+# Read data
+#==============================================================================
+santo_coord <- read.table("SANTO_coordinates.csv", header = TRUE, sep = ",")
+mig <- read.csv("migration_events.csv", header = TRUE)
+
+#==============================================================================
+# Plot the map
+#==============================================================================
+Figure5D <- ggmap(SANTO_MAP) + geom_point(aes(x = Long, y = Lat, col=Cluster, shape=MPK12, cex = .5), data = santo_coord, alpha = 0.8, size = 1.5) + labs(x = 'Longitude', y = 'Latitude') + scale_colour_manual(values = c("#0075DC", "yellow4", "#C20088", "#2BCE48", "#F0A3FF")) + scale_shape_manual(values = c("Ancestral" = 16,'Derived' = 17)) + theme_light() + geom_curve(data = mig, aes(x = Longitude_from, y = Latitude_from, xend = Longitude_to, yend = Latitude_to), curvature = -0.5, arrow = arrow(length = unit(0.05, "npc"))) + coord_equal() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_rect(fill = 'transparent', colour = "white"), legend.position = "None", plot.background = element_rect(fill='transparent', color=NA), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(), plot.margin = grid::unit(c(0,0,0,0), "cm")) + annotate(geom="text", x=-25.0555, y=17.1225, label="Recent migration events ~200-500 ya", color="dark red", size = 2.5) + annotate(geom="text", x=-25.085, y=17.096, label="Espongeiro/Ribeira\n1.8-2.8 kya", color="dark red", size = 2.5) + annotate(geom="text", x=-25.02, y=17.104, label="Pico", color="dark red", size = 2.5) # + annotate(geom="text", x=-25.058, y=17.091, label="MPK12 Allele ● Ancestral ▲ Derived", color="black", size = 2.5, fontface = 'bold')
+
+Figure5D
+
+#==============================================================================
+# Save figure5d
+#==============================================================================
+ggsave(file = "Figure5D.pdf", width = 4, height = 2, units = "in", encoding="MacRoman") 
+Figure5D
+dev.off()
+
+```
+
+
