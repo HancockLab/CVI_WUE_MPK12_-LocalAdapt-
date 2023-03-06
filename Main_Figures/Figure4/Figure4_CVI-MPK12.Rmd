@@ -1,0 +1,109 @@
+---
+title: "Figure 4. Population structure of A. thaliana sub-populations in Santo Antão"
+author: "Ahmed Elfarargi"
+date: "2023-01-31"
+output: html_notebook
+---
+
+## Load required R libraries
+```{r setup, include=TRUE, message=FALSE, warning=FALSE,}
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(ggmap)
+```
+
+### Figure 4A - Geographical distribution of sub-populations across Santo Antão
+```{r, message=FALSE, warning=FALSE, fig.width= 4, fig.height= 2,class.source = 'fold-show'}
+
+#==============================================================================
+# Read data
+#==============================================================================
+SANTO_GEO <- read.table("SANTO_coordinates.csv", header = TRUE, sep = ",")
+
+#==============================================================================
+# Draw the map
+#==============================================================================
+lat <- c(17.09, 17.125)
+lon <- c(-25.1, -25.01)
+bbox <- ggmap::make_bbox(lon = lon, lat = lat, f = 0)
+SANTO_MAP <- get_stamenmap(bbox, zoom = 15, maptype = "toner-background")
+
+#==============================================================================
+# Plot the map
+#==============================================================================
+Figure4A <- ggmap(SANTO_MAP) + geom_point(aes(x = SANTO_GEO$Long, y = SANTO_GEO$Lat, col=SANTO_GEO$Cluster, cex = 0.3), data = SANTO_GEO, alpha = 0.8, size = 2) + labs(x = 'Longitude', y = 'Latitude') + scale_colour_manual(values = c("#0075DC", "yellow4", "#C20088", "#2BCE48", "#F0A3FF")) + theme_light() + theme(legend.title = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank())+ theme(legend.position = "None")
+
+Figure4A
+
+#==============================================================================
+# Save final figure and edit with adding images of representative sites
+#==============================================================================
+pdf(file = "Figure4A.pdf",width = 4, height = 2)
+Figure4A
+dev.off()
+
+```
+
+### Figure 4B - PCA within Santo Antão 
+```{r, message=FALSE, warning=FALSE, fig.width= 14, fig.height= 7, class.source = 'fold-show'}
+
+#==============================================================================
+# Read in data
+#==============================================================================
+pca <- read.table("pca_santo_snps.eigenvec", header = FALSE)
+eigenval <- scan("pca_santo_snps.eigenval")
+cols <- read.table("data_color.txt", header = T, sep = "\t", dec = ".")
+
+#==============================================================================
+# Sort out the pca data
+#==============================================================================
+# remove nuisance column
+pca <- pca[,-1]
+# set names
+names(pca)[1] <- "ind"
+names(pca)[2:ncol(pca)] <- paste0("PC", 1:(ncol(pca)-1))
+
+#==============================================================================
+# remake data.frame
+#==============================================================================
+PCA <- cbind.data.frame(cols, pca)
+
+# Save table
+write.csv(PCA,"PCA_within_SA.csv",row.names=F)
+
+#==============================================================================
+# Convert to percentage variance explained
+#==============================================================================
+pve <- data.frame(PC = 1:20, pve = eigenval/sum(eigenval)*100)
+
+#==============================================================================
+# Plot the percentage variance explained
+#==============================================================================
+a <- ggplot(pve, aes(PC, pve)) + geom_bar(stat = "identity")
+a + ylab("Percentage variance explained (%)") + theme_light()
+
+#==============================================================================
+# calculate the cumulative sum of the percentage variance explained
+#==============================================================================
+cumsum(pve$pve)
+
+#==============================================================================
+# Plot Figure4B
+#==============================================================================
+# order Cluster for plot
+PCA$Cluster <- factor(PCA$Cluster,levels = c("Fig", "Cova", "Ribeira", "Pico", "Espong"))
+
+# Plot PCA for PC1 and PC2
+pca12 <- ggplot(PCA, aes(PC1, PC2, color = Cluster)) + geom_point(size=3) + xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)")) + ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)")) + theme_light() + theme(legend.title = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank())+ theme(legend.position = "None") + scale_colour_manual(breaks = c("Fig", "Cova", "Ribeira", "Pico", "Espong"), values = c("#C20088", "#0075DC", "#F0A3FF", "#2BCE48", "yellow4")) + theme(axis.text=element_text(size=13), axis.title=element_text(size=18)) + theme( legend.text = element_text(size = 18)) 
+
+# Plot PCA for PC2 and PC3
+pca23 <- ggplot(PCA, aes(PC2, PC3, color = Cluster)) + geom_point(size=3) + xlab(paste0("PC2 (", signif(pve$pve[2], 3), "%)")) + ylab(paste0("PC3 (", signif(pve$pve[3], 3), "%)")) + theme_light() + theme(legend.title = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank())+ theme(legend.position = "right") + scale_colour_manual(breaks = c("Fig", "Cova", "Ribeira", "Pico", "Espong") ,values = c("#C20088", "#0075DC", "#F0A3FF", "#2BCE48", "yellow4"))+ theme(axis.text=element_text(size=13), axis.title=element_text(size=18)) + theme( legend.text = element_text(size = 18))+ theme(legend.position = "None")
+
+# Add aligned plots into a single object 
+figure <- egg::ggarrange(pca12, pca23, nrow = 1)
+
+# Save into a pdf
+ggsave("Figure4B.pdf", figure, width = 24, height = 10, units = "cm", dpi = 600)
+
+```
