@@ -1,0 +1,85 @@
+---
+title: "Figure 2. Phenotypic variation in (A) stomatal conductance (gs) and (B) water use efficiency (WUE) for Santo Antão, CVI and Moroccan A. thaliana populations in well-watered (WW) and water deficit (WD) conditions"
+author: "Ahmed Elfarargi"
+date: "2023-01-31"
+output: html_notebook
+---
+
+## Load required R libraries
+```{r setup, include=TRUE, message=FALSE, warning=FALSE,}
+library(ggpubr)
+library(ggthemes)
+library(EnvStats)
+library(lme4)
+library(sjPlot)
+library(sjmisc)
+```
+
+### Figure 2 and supplementary table S2
+```{r, message=FALSE, warning=FALSE, fig.width= 10, fig.height= 7, class.source = 'fold-show'}
+
+#==============================================================================
+# Read Phenotype data for Stomatal Conductance (SC) and Water Use Efficiency (WUE)
+#==============================================================================
+PhenoData<-read.csv("P3ID45_PhenoData_SC_WUE.csv",header=TRUE)
+
+#==============================================================================
+# Replace 'Santo Antao' with 'Santo Antão'
+#==============================================================================
+PhenoData$Population <- gsub('Santo Antao', 'Santo Antão', PhenoData$Population)
+
+#==============================================================================
+# Phenotypic Shift between SA and MOR
+#==============================================================================
+PhenoData$Population<-factor(PhenoData$Population,levels=c("Santo Antão", "Morocco"))
+PhenoData$Treatment<-factor(PhenoData$Treatment,levels=c("WW", "WD"))
+SA_MOR_comparisons <- list(c("Santo Antão", "Morocco"))
+
+#==============================================================================
+# Plotting for stomatal conductance shifts for between SA and MOR in response to drought
+#==============================================================================
+P1 <- ggboxplot(PhenoData, x = "Population", y = "StomatalConductance", add = "jitter", color = "Population", palette = c("#0072B2", "#009E73"), shape = "Population") + stat_compare_means(comparisons = SA_MOR_comparisons, method="wilcox.test", aes(label = paste0("p = ", ..p.format..)))+ theme(legend.position = "none") + labs(y= "Stomatal conductance (gs)" ~ (mmol ~ m^{-2} ~ s^{-1}))+ theme_calc(base_size = 15, base_family = "sans")+ theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + facet_wrap(~ Treatment) + stat_n_text()
+
+P1
+
+#==============================================================================
+# Plotting for WUE shifts between SA and MOR in response to drought
+#==============================================================================
+P2 <- ggboxplot(PhenoData, x = "Population", y = "delta13C", add = "jitter", color = "Population", palette = c("#0072B2", "#009E73"), shape = "Population") + stat_compare_means(comparisons = SA_MOR_comparisons, method="wilcox.test", aes(label = paste0("p = ", ..p.format..)))+ theme(legend.position = "top") + labs(y= expression(paste(WUE," (",delta^{13}, "C) (\u2030)"))) + theme_calc(base_size = 15, base_family = "sans") + theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())+ facet_wrap(~ Treatment) + stat_n_text()
+
+P2
+
+#==============================================================================
+# Arrange both panels in final figure
+#==============================================================================
+ggsave(file = "Figure2.pdf", width = 14, height = 5, units = "in", encoding="MacRoman")
+ggarrange(P1, P2, ncol=2, nrow=1, common.legend = TRUE, legend="right")
+dev.off()
+
+#########################################################################################################
+#########################################################################################################
+#########################################################################################################
+#==============================================================================
+# Table S2. Summary statistics of the fixed effects of treatment, region, and their interaction on stomatal conductance and WUE phenotypes from a linear mixed-effects model.
+#==============================================================================
+
+#==============================================================================
+# Model for WUE
+#==============================================================================
+model_d13c <- lmer(formula=delta13C~ Population + Treatment + Population:Treatment + (1 | Genotype), data=PhenoData)
+summary(model_d13c)
+anova(model_d13c)
+
+#==============================================================================
+# Model for SC
+#==============================================================================
+model_sc <- lmer(formula=StomatalConductance~ Population + Treatment + Population:Treatment + (1 | Genotype), data=PhenoData)
+summary(model_sc)
+anova(model_sc)
+
+#==============================================================================
+# Arrange stats in a table
+#==============================================================================
+sjPlot::tab_model(model_sc, model_d13c, dv.labels = c("Stomatal Conductance", "WUE"), emph.p=T, show.intercept = TRUE, show.est = TRUE, show.ci = 0.95, string.ci = "Conf. Int (95%)", show.se = TRUE, show.std = TRUE, show.p = TRUE, string.p = "P-Value", show.stat = TRUE, show.zeroinf = TRUE, show.r2 = TRUE, show.icc = TRUE, show.re.var = TRUE, show.ngroups = TRUE, show.fstat = TRUE, show.aic = TRUE, show.aicc = TRUE, show.dev = TRUE, show.loglik = TRUE, show.obs = TRUE, show.reflvl = TRUE, file = "SupplementaryTableS2.html")
+
+```
