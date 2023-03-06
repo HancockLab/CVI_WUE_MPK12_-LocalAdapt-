@@ -1,0 +1,415 @@
+---
+title: "Figure 3. Genome-wide association (GWA) mapping of water use efficiency (WUE)"
+author: "Ahmed Elfarargi"
+date: "2023-01-31"
+output: html_notebook
+---
+
+## Load required R libraries
+```{r setup, include=TRUE, message=FALSE, warning=FALSE,}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(cowplot)
+library(readr)
+library(ggrepel)
+```
+
+### RUN GWAS-GEMMA with both models (LMM and BSLMM)
+```{bash, eval=FALSE, class.source = 'fold-show'}
+#!/bin/bash
+
+INPUT_VCF="/path_to_directory/CVI_SHORE.vcf"
+INPUT_PHENO="/path_to_phenodata/phenotype_data.txt"
+gemma="/path_to_gemma/gemma"
+vcftools="/path_to_vcftools/vcftools"
+bcftools="/path_to_bcftools/bcftools"
+keep_SA="/path_to_directory/SantoAntao_SeqIDs.txt"
+PHENO_ORDER=(copy and paste the order of phenotypes)
+PHENO_NAMES=(copy and paste phenotypes names)
+
+#==============================================================================
+# 1- Processing the VCF file
+#==============================================================================
+# Remove non-biallelic SNPs, filtering for quality, retained segregating sites, and filtered out missing data
+$bcftools view -m2 -M2 -v snps –min-ac=1 -i 'MIN(FMT/DP)>3 & MIN(FMT/GQ)>25 & F_MISSING=0' SA_SHORE_SNPs.vcf > SA_SHORE_filtered.vcf
+$bcftools annotate --set-id +'%CHROM\_%POS\_%REF\_%ALT' SA_SHORE_filtered.vcf > SA_SHORE_filtered_snpIDs.vcf
+bgzip -c SA_SHORE_filtered_snpIDs.vcf > SA_SHORE_filtered_snpIDs.vcf.gz 
+tabix -p vcf SA_SHORE_filtered_snpIDs.vcf.gz
+
+#==============================================================================
+# 2- Create input to plink; this generates .ped and .map files
+#==============================================================================
+$vcftools --gzvcf SA_SHORE_filtered_snpIDs.vcf.gz --plink --out gemma_output
+
+#==============================================================================
+# 3- Create bfiles for GEMMA
+#==============================================================================
+plink --file gemma_output --make-bed --out gemma_output_1
+
+#==============================================================================
+# 4- Add all phenotypes to the ".fam"" file
+#==============================================================================
+cut -d' ' -f1,2,3,4,5 gemma_output_1.fam > gemma_output_2.fam
+paste -d ' ' gemma_output_2.fam $INPUT_PHENO > gemma_output_1.fam
+
+#==============================================================================
+# 5- Create kinship matrix
+#==============================================================================
+$gemma -bfile gemma_output_1 -gk 1 -o gemma_output_1_kinship
+
+#==============================================================================
+# 6- RUN GEMMA-LMM for each phenotype
+#==============================================================================
+for index in ${!PHENO_ORDER[*]}; do echo "$gemma -bfile gemma_output_1 -n ${PHENO_ORDER[$index]} -k output/gemma_output_1_kinship.cXX.txt -lmm 4 -maf 0.05 -o gemma_lmm_${PHENO_NAMES[$index]}";done
+
+#==============================================================================
+# 7- RUN GEMMA-BSLMM for each phenotype
+#==============================================================================
+for index in ${!PHENO_ORDER[*]}; do echo "$gemma -bfile gemma_output_1 -n ${PHENO_ORDER[$index]} -k output/gemma_output_1_kinship.cXX.txt -bslmm 1 -s 10000000 -w 2500000 -maf 0.05 -o gemma_bslmm_${PHENO_NAMES[$index]}";done
+
+```
+
+### 1- Average WUE (GEMMA-BSLMM)
+```{r, message=FALSE, warning=FALSE, fig.width= 10, fig.height= 7, class.source = 'fold-show'}
+
+#==============================================================================
+# Load parameters output
+#==============================================================================
+gwas_bslmm_avg_wue_params<-read.table("Avg_WUE_bslmm1_param.txt",header=T,sep="\t")
+
+gwas_bslmm_avg_wue_params$rs <- gsub("[:,]", "_", gwas_bslmm_avg_wue_params$rs)
+gwas_bslmm_avg_wue_params$chr <- substr(gwas_bslmm_avg_wue_params$rs,4,4)
+gwas_bslmm_avg_wue_params$chr <- as.numeric(as.character(gwas_bslmm_avg_wue_params$chr))
+gwas_bslmm_avg_wue_params <- dplyr::arrange(gwas_bslmm_avg_wue_params,chr,order(ps))
+
+#==============================================================================
+# Get variants with sparse effect size on phenotypes 
+#==============================================================================
+# Add sparse effect size (= beta * gamma) to data frame
+gwas_bslmm_avg_wue_params["eff"]<-abs(gwas_bslmm_avg_wue_params$beta*gwas_bslmm_avg_wue_params$gamma)
+# Get variants with effect size > 0
+gwas_bslmm_avg_wue_params.effects<-gwas_bslmm_avg_wue_params[gwas_bslmm_avg_wue_params$eff>0,]
+# Sort by descending effect size
+gwas_bslmm_avg_wue_params.effects.sort<-gwas_bslmm_avg_wue_params.effects[order(-gwas_bslmm_avg_wue_params.effects$eff),]
+
+#==============================================================================
+# variants with the highest sparse effects
+#==============================================================================
+# Top 1% variants (above 99% quantile)
+gwas_bslmm_avg_wue_top1<-gwas_bslmm_avg_wue_params.effects.sort[gwas_bslmm_avg_wue_params.effects.sort$eff>quantile(gwas_bslmm_avg_wue_params.effects.sort$eff,0.99),]
+# Top 0.1% variants (above 99.9% quantile)
+gwas_bslmm_avg_wue_top01<-gwas_bslmm_avg_wue_params.effects.sort[gwas_bslmm_avg_wue_params.effects.sort$eff>quantile(gwas_bslmm_avg_wue_params.effects.sort$eff,0.999),]
+# Top 0.01% variants (above 99.99% quantile)
+gwas_bslmm_avg_wue_top001<-gwas_bslmm_avg_wue_params.effects.sort[gwas_bslmm_avg_wue_params.effects.sort$eff>quantile(gwas_bslmm_avg_wue_params.effects.sort$eff,0.9999),]
+
+#==============================================================================
+# Get variants with high Posterior Inclusion Probability (PIP) == gamma
+#==============================================================================
+# Sort variants by descending PIP
+gwas_bslmm_avg_wue_params.pipsort<-gwas_bslmm_avg_wue_params[order(-gwas_bslmm_avg_wue_params$gamma),]
+
+#==============================================================================
+# Sets of variants above a certain threshold
+#==============================================================================
+# Variants with effect in 1% MCMC samples or more
+gwas_bslmm_avg_wue_pip01<-gwas_bslmm_avg_wue_params.pipsort[gwas_bslmm_avg_wue_params.pipsort$gamma>=0.01,]
+# Variants with effect in 10% MCMC samples or more
+gwas_bslmm_avg_wue_pip10<-gwas_bslmm_avg_wue_params.pipsort[gwas_bslmm_avg_wue_params.pipsort$gamma>=0.10,]
+# Variants with effect in 25% MCMC samples or more
+gwas_bslmm_avg_wue_pip25<-gwas_bslmm_avg_wue_params.pipsort[gwas_bslmm_avg_wue_params.pipsort$gamma>=0.25,]
+# Variants with effect in 50% MCMC samples or more
+gwas_bslmm_avg_wue_pip50<-gwas_bslmm_avg_wue_params.pipsort[gwas_bslmm_avg_wue_params.pipsort$gamma>=0.50,]
+
+#==============================================================================
+# Reformat data
+#==============================================================================
+gwas_bslmm_avg_wue <- gwas_bslmm_avg_wue_params
+gwas_bslmm_avg_wue %>% dplyr::rename(SNP = rs, BP = ps, CHR = chr) -> gwas_bslmm_avg_wue 
+gwas_bslmm_avg_wue <- gwas_bslmm_avg_wue %>% dplyr::select(CHR, BP, SNP, alpha, beta, gamma, eff)
+
+#==============================================================================
+# Merge with annotations
+#==============================================================================
+snpeff_ann = read_csv("VCF_snpEff_annotation_variants.csv", col_names = FALSE)
+snpeff_ann2 <- snpeff_ann %>% dplyr::rename(CHR = X1, BP = X2, REF = X3, ALT = X4, VariantType = X5, Impact = X6, GeneName = X7, GeneCode = X8)
+snpeff_ann2$CHR <- gsub("Chr", "", snpeff_ann2$CHR)
+
+gwas_bslmm_avg_wue_total <- merge(gwas_bslmm_avg_wue,snpeff_ann2,by=c("CHR", "BP"))
+gwas_bslmm_avg_wue_total <- gwas_bslmm_avg_wue_total[order(-gwas_bslmm_avg_wue_total$eff) ,  ]
+dup_BP <-gwas_bslmm_avg_wue_total$BP
+dup_GeneName <-gwas_bslmm_avg_wue_total$GeneName
+gwas_bslmm_avg_wue_total <-cbind(gwas_bslmm_avg_wue_total,dup_BP, dup_GeneName)
+gwas_bslmm_avg_wue_total<-gwas_bslmm_avg_wue_total %>% unite(label, dup_GeneName, dup_BP, sep = " | BP:")
+
+#==============================================================================
+# Sort variants by descending PIP
+#==============================================================================
+gwas_bslmm_avg_wue_params.pipsort<-gwas_bslmm_avg_wue_total[order(-gwas_bslmm_avg_wue_total$gamma),]
+
+#==============================================================================
+# Sets of variants above a certain threshold
+#==============================================================================
+# Variants with effect in 1% MCMC samples or more
+gwas_bslmm_avg_wue_pip01<-gwas_bslmm_avg_wue_params.pipsort[gwas_bslmm_avg_wue_params.pipsort$gamma>=0.01,]
+# Variants with effect in 10% MCMC samples or more
+gwas_bslmm_avg_wue_pip10<-gwas_bslmm_avg_wue_params.pipsort[gwas_bslmm_avg_wue_params.pipsort$gamma>=0.10,]
+# Variants with effect in 25% MCMC samples or more
+gwas_bslmm_avg_wue_pip25<-gwas_bslmm_avg_wue_params.pipsort[gwas_bslmm_avg_wue_params.pipsort$gamma>=0.25,]
+# Variants with effect in 50% MCMC samples or more
+gwas_bslmm_avg_wue_pip50<-gwas_bslmm_avg_wue_params.pipsort[gwas_bslmm_avg_wue_params.pipsort$gamma>=0.50,]
+
+# Write tables
+write.table(gwas_bslmm_avg_wue_pip01, file="gwas_bslmm_avg_wue_top1_pip01.txt", quote=F, row.names=F, sep="\t")
+write.table(gwas_bslmm_avg_wue_pip10, file="gwas_bslmm_avg_wue_top1_pip10.txt", quote=F, row.names=F, sep="\t")
+write.table(gwas_bslmm_avg_wue_pip25, file="gwas_bslmm_avg_wue_top1_pip25.txt", quote=F, row.names=F, sep="\t")
+write.table(gwas_bslmm_avg_wue_pip50, file="gwas_bslmm_avg_wue_top1_pip50.txt", quote=F, row.names=F, sep="\t")
+
+#==============================================================================
+# Variants with the highest sparse effects
+#==============================================================================
+# Top 1% variants (above 99% quantile)
+gwas_bslmm_avg_wue_top1<-gwas_bslmm_avg_wue_params.pipsort[gwas_bslmm_avg_wue_params.pipsort$eff>quantile(gwas_bslmm_avg_wue_params.pipsort$eff,0.99),]
+# Top 0.1% variants (above 99.9% quantile)
+gwas_bslmm_avg_wue_top01<-gwas_bslmm_avg_wue_params.pipsort[gwas_bslmm_avg_wue_params.pipsort$eff>quantile(gwas_bslmm_avg_wue_params.pipsort$eff,0.999),]
+# Top 0.01% variants (above 99.99% quantile)
+gwas_bslmm_avg_wue_top001<-gwas_bslmm_avg_wue_params.pipsort[gwas_bslmm_avg_wue_params.pipsort$eff>quantile(gwas_bslmm_avg_wue_params.pipsort$eff,0.9999),]
+
+# Write tables
+write.table(gwas_bslmm_avg_wue_top1, file="gwas_bslmm_avg_wue_top1_top1eff.txt", quote=F, row.names=F, sep="\t")
+write.table(gwas_bslmm_avg_wue_top01, file="gwas_bslmm_avg_wue_top1_top0.1eff.txt", quote=F, row.names=F, sep="\t")
+write.table(gwas_bslmm_avg_wue_top001, file="gwas_bslmm_avg_wue_top1_top0.01eff.txt", quote=F, row.names=F, sep="\t")
+
+#==============================================================================
+# Visualization
+#==============================================================================
+MPK12SNPVariant= "Chr2_18947614" # Highlight MPK12 G53R
+
+gwas_bslmm_avg_wue_final <- gwas_bslmm_avg_wue_total %>% dplyr::group_by(CHR) %>% dplyr::summarise(chr_len=max(BP)) %>% dplyr::mutate(tot=cumsum(chr_len)-chr_len) %>% dplyr::select(-chr_len) %>% left_join(gwas_bslmm_avg_wue_total, ., by=c("CHR"="CHR")) %>% dplyr::arrange(CHR, BP) %>% dplyr::mutate( BPcum=BP+tot) %>% dplyr::mutate( is_highlight=ifelse(SNP %in% MPK12SNPVariant, "yes", "no")) %>% dplyr::mutate( is_annotate=ifelse(SNP %in% MPK12SNPVariant, "yes", "no"))
+
+axisdf = gwas_bslmm_avg_wue_final %>% dplyr::group_by(CHR) %>% dplyr::summarise(center=( max(BPcum) + min(BPcum) ) / 2 )
+
+plot_gwas_bslmm_avg_wue <- gwas_bslmm_avg_wue_final %>% dplyr::mutate(quadrant = case_when(is_annotate=="yes" ~ "Q1")) %>% dplyr::mutate(label = case_when(is_annotate=="yes"  ~  paste(GeneName))) %>% ggplot(aes(x=BPcum, y=gamma)) + geom_point(aes(color=as.factor(CHR), size = eff)) + scale_color_manual(values = rep(c("#999999", "#9999CC"), 5 )) + guides(color = "none")+ theme(panel.background = element_rect(fill = 'transparent', colour = "white"), legend.key = element_rect(fill = NA, colour = NA), legend.position = c(.857, .905), legend.direction = "vertical", plot.background = element_rect(fill='transparent', color=NA), legend.background = element_rect(fill='white'), legend.box.background = element_rect(fill='white')) + scale_size_continuous(name="Effect size") + guides(size = guide_legend(nrow = 1, byrow = T))+ scale_x_continuous(labels=c("1" = "Chr1", "2" = "Chr2","3" = "Chr3","4" = "Chr4","5" = "Chr5"), breaks= axisdf$center) + scale_y_continuous(limits = c(0, 1)) + theme(axis.line = element_line(size=1, colour = "black"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_rect(colour = "black", fill=NA, size=1), panel.background = element_blank(), axis.ticks.length=unit(0.3,"cm")) + theme(panel.background = element_rect(fill = 'white')) + ylab("PIP") + theme(axis.text.y = element_text(color="black", size=20, face="bold")) + theme(axis.text.x = element_text(color="black", size=20, face="bold")) + theme(axis.title.y = element_text(color="black", size=20, face="bold")) + theme(axis.title.x=element_blank(), axis.text.x=element_blank()) + theme(plot.title = element_text(color="#000000",face="bold",  size=20)) + ggtitle(expression(bold(paste("Average WUE")))) + geom_point(data=subset(gwas_bslmm_avg_wue_final, is_highlight=="yes"), color="dark red", size=2) + geom_label_repel(aes(BPcum, gamma, label= label), fontface = 'italic', color = 'dark red', size =4, box.padding = unit(0.35, "lines"), point.padding = unit(0.5, "lines"), segment.color = 'grey50',max.overlaps = Inf)
+  
+plot_gwas_bslmm_avg_wue
+
+```
+
+### 2- Drought response of WUE (GEMMA-BSLMM)
+```{r, message=FALSE, warning=FALSE, fig.width= 10, fig.height= 7, class.source = 'fold-show'}
+
+#==============================================================================
+# Load parameters output
+#==============================================================================
+gwas_bslmm_diff_wue_params<-read.table("DroughtResponse_WUE_bslmm1_param.txt",header=T,sep="\t")
+
+gwas_bslmm_diff_wue_params$rs <- gsub("[:,]", "_", gwas_bslmm_diff_wue_params$rs)
+gwas_bslmm_diff_wue_params$chr <- substr(gwas_bslmm_diff_wue_params$rs,4,4)
+gwas_bslmm_diff_wue_params$chr <- as.numeric(as.character(gwas_bslmm_diff_wue_params$chr))
+gwas_bslmm_diff_wue_params <- dplyr::arrange(gwas_bslmm_diff_wue_params,chr,order(ps))
+
+#==============================================================================
+# Get variants with sparse effect size on phenotypes 
+#==============================================================================
+# Add sparse effect size (= beta * gamma) to data frame
+gwas_bslmm_diff_wue_params["eff"]<-abs(gwas_bslmm_diff_wue_params$beta*gwas_bslmm_diff_wue_params$gamma)
+# Get variants with effect size > 0
+gwas_bslmm_diff_wue_params.effects<-gwas_bslmm_diff_wue_params[gwas_bslmm_diff_wue_params$eff>0,]
+# Sort by descending effect size
+gwas_bslmm_diff_wue_params.effects.sort<-gwas_bslmm_diff_wue_params.effects[order(-gwas_bslmm_diff_wue_params.effects$eff),]
+
+#==============================================================================
+# Variants with the highest sparse effects
+#==============================================================================
+# Top 1% variants (above 99% quantile)
+gwas_bslmm_diff_wue_top1<-gwas_bslmm_diff_wue_params.effects.sort[gwas_bslmm_diff_wue_params.effects.sort$eff>quantile(gwas_bslmm_diff_wue_params.effects.sort$eff,0.99),]
+# Top 0.1% variants (above 99.9% quantile)
+gwas_bslmm_diff_wue_top01<-gwas_bslmm_diff_wue_params.effects.sort[gwas_bslmm_diff_wue_params.effects.sort$eff>quantile(gwas_bslmm_diff_wue_params.effects.sort$eff,0.999),]
+# Top 0.01% variants (above 99.99% quantile)
+gwas_bslmm_diff_wue_top001<-gwas_bslmm_diff_wue_params.effects.sort[gwas_bslmm_diff_wue_params.effects.sort$eff>quantile(gwas_bslmm_diff_wue_params.effects.sort$eff,0.9999),]
+
+#==============================================================================
+# Get variants with high Posterior Inclusion Probability (PIP) == gamma
+#==============================================================================
+# Sort variants by descending PIP
+gwas_bslmm_diff_wue_params.pipsort<-gwas_bslmm_diff_wue_params[order(-gwas_bslmm_diff_wue_params$gamma),]
+
+#==============================================================================
+# Sets of variants above a certain threshold
+#==============================================================================
+# Variants with effect in 1% MCMC samples or more
+gwas_bslmm_diff_wue_pip01<-gwas_bslmm_diff_wue_params.pipsort[gwas_bslmm_diff_wue_params.pipsort$gamma>=0.01,]
+# Variants with effect in 10% MCMC samples or more
+gwas_bslmm_diff_wue_pip10<-gwas_bslmm_diff_wue_params.pipsort[gwas_bslmm_diff_wue_params.pipsort$gamma>=0.10,]
+# Variants with effect in 25% MCMC samples or more
+gwas_bslmm_diff_wue_pip25<-gwas_bslmm_diff_wue_params.pipsort[gwas_bslmm_diff_wue_params.pipsort$gamma>=0.25,]
+# Variants with effect in 50% MCMC samples or more
+gwas_bslmm_diff_wue_pip50<-gwas_bslmm_diff_wue_params.pipsort[gwas_bslmm_diff_wue_params.pipsort$gamma>=0.50,]
+
+#==============================================================================
+# Prepare data
+#==============================================================================
+gwas_bslmm_diff_wue <- gwas_bslmm_diff_wue_params
+gwas_bslmm_diff_wue %>% dplyr::rename(SNP = rs, BP = ps, CHR = chr) -> gwas_bslmm_diff_wue
+gwas_bslmm_diff_wue <- gwas_bslmm_diff_wue %>% dplyr::select(CHR, BP, SNP, alpha, beta, gamma, eff)
+
+#==============================================================================
+# Merge with annotations
+#==============================================================================
+gwas_bslmm_diff_wue_total <- merge(gwas_bslmm_diff_wue,snpeff_ann2,by=c("CHR", "BP"))
+gwas_bslmm_diff_wue_total <- gwas_bslmm_diff_wue_total[order(-gwas_bslmm_diff_wue_total$eff) ,  ]
+dup_BP <-gwas_bslmm_diff_wue_total$BP
+dup_GeneName <-gwas_bslmm_diff_wue_total$GeneName
+gwas_bslmm_diff_wue_total <-cbind(gwas_bslmm_diff_wue_total,dup_BP, dup_GeneName)
+gwas_bslmm_diff_wue_total<-gwas_bslmm_diff_wue_total %>% unite(label, dup_GeneName, dup_BP, sep = " | BP:")
+
+#==============================================================================
+# Sort variants by descending PIP
+#==============================================================================
+gwas_bslmm_diff_wue_params.pipsort<-gwas_bslmm_diff_wue_total[order(-gwas_bslmm_diff_wue_total$gamma),]
+
+#==============================================================================
+# Sets of variants above a certain threshold
+#==============================================================================
+# variants with effect in 1% MCMC samples or more
+gwas_bslmm_diff_wue_pip01<-gwas_bslmm_diff_wue_params.pipsort[gwas_bslmm_diff_wue_params.pipsort$gamma>=0.01,]
+# variants with effect in 10% MCMC samples or more
+gwas_bslmm_diff_wue_pip10<-gwas_bslmm_diff_wue_params.pipsort[gwas_bslmm_diff_wue_params.pipsort$gamma>=0.10,]
+# variants with effect in 25% MCMC samples or more
+gwas_bslmm_diff_wue_pip25<-gwas_bslmm_diff_wue_params.pipsort[gwas_bslmm_diff_wue_params.pipsort$gamma>=0.25,]
+# variants with effect in 50% MCMC samples or more
+gwas_bslmm_diff_wue_pip50<-gwas_bslmm_diff_wue_params.pipsort[gwas_bslmm_diff_wue_params.pipsort$gamma>=0.50,]
+
+# write tables
+write.table(gwas_bslmm_diff_wue_pip01, file="gwas_bslmm_diff_wue_top1_pip01.txt", quote=F, row.names=F, sep="\t")
+write.table(gwas_bslmm_diff_wue_pip10, file="gwas_bslmm_diff_wue_top1_pip10.txt", quote=F, row.names=F, sep="\t")
+write.table(gwas_bslmm_diff_wue_pip25, file="gwas_bslmm_diff_wue_top1_pip25.txt", quote=F, row.names=F, sep="\t")
+write.table(gwas_bslmm_diff_wue_pip50, file="gwas_bslmm_diff_wue_top1_pip50.txt", quote=F, row.names=F, sep="\t")
+
+#==============================================================================
+# Variants with the highest sparse effects
+#==============================================================================
+# top 1% variants (above 99% quantile)
+gwas_bslmm_diff_wue_top1<-gwas_bslmm_diff_wue_params.pipsort[gwas_bslmm_diff_wue_params.pipsort$eff>quantile(gwas_bslmm_diff_wue_params.pipsort$eff,0.99),]
+# top 0.1% variants (above 99.9% quantile)
+gwas_bslmm_diff_wue_top01<-gwas_bslmm_diff_wue_params.pipsort[gwas_bslmm_diff_wue_params.pipsort$eff>quantile(gwas_bslmm_diff_wue_params.pipsort$eff,0.999),]
+# top 0.01% variants (above 99.99% quantile)
+gwas_bslmm_diff_wue_top001<-gwas_bslmm_diff_wue_params.pipsort[gwas_bslmm_diff_wue_params.pipsort$eff>quantile(gwas_bslmm_diff_wue_params.pipsort$eff,0.9999),]
+
+# write tables
+write.table(gwas_bslmm_diff_wue_top1, file="gwas_bslmm_diff_wue_top1_top1eff.txt", quote=F, row.names=F, sep="\t")
+write.table(gwas_bslmm_diff_wue_top01, file="gwas_bslmm_diff_wue_top1_top0.1eff.txt", quote=F, row.names=F, sep="\t")
+write.table(gwas_bslmm_diff_wue_top001, file="gwas_bslmm_diff_wue_top1_top0.01eff.txt", quote=F, row.names=F, sep="\t")
+
+#==============================================================================
+# Visualization
+#==============================================================================
+MPK12SNPVariant= "Chr2_18947614" # Highlight MPK12 G53R
+
+gwas_bslmm_diff_wue_final <- gwas_bslmm_diff_wue_total %>% dplyr::group_by(CHR) %>% dplyr::summarise(chr_len=max(BP)) %>% dplyr::mutate(tot=cumsum(chr_len)-chr_len) %>% dplyr::select(-chr_len) %>% left_join(gwas_bslmm_diff_wue_total, ., by=c("CHR"="CHR")) %>% dplyr::arrange(CHR, BP) %>% dplyr::mutate( BPcum=BP+tot) %>% dplyr::mutate( is_highlight=ifelse(SNP %in% MPK12SNPVariant, "yes", "no")) %>% dplyr::mutate( is_annotate=ifelse(SNP %in% MPK12SNPVariant, "yes", "no"))
+
+axisdf = gwas_bslmm_diff_wue_final %>% dplyr::group_by(CHR) %>% dplyr::summarise(center=( max(BPcum) + min(BPcum) ) / 2 )
+
+plot_gwas_bslmm_diff_wue <- gwas_bslmm_diff_wue_final %>% dplyr::mutate(quadrant = case_when(is_annotate=="yes" ~ "Q1")) %>% dplyr::mutate(label = case_when(is_annotate=="yes" ~ paste(GeneName))) %>% ggplot(aes(x=BPcum, y=gamma)) + geom_point(aes(color=as.factor(CHR), size = eff)) + scale_color_manual(values = rep(c("#999999", "#9999CC"), 5 )) + guides(color = "none")+ theme(panel.background = element_rect(fill = 'transparent', colour = "white"), legend.key = element_rect(fill = NA, colour = NA), legend.position = c(.746, .905), legend.direction = "vertical", plot.background = element_rect(fill='transparent', color=NA), legend.background = element_rect(fill='white'), legend.box.background = element_rect(fill='white')) + scale_size_continuous(name="Effect size") + guides(size = guide_legend(nrow = 1, byrow = T)) + scale_x_continuous(labels=c("1" = "Chr1", "2" = "Chr2","3" = "Chr3","4" = "Chr4","5" = "Chr5"), breaks= axisdf$center) + scale_y_continuous(limits = c(0, 0.2)) + theme(axis.line = element_line(size=1, colour = "black"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_rect(colour = "black", fill=NA, size=1), panel.background = element_blank(), axis.ticks.length=unit(0.3,"cm")) + theme(panel.background = element_rect(fill = 'white')) + ylab("PIP") + theme(axis.text.y = element_text(color="black", size=20, face="bold")) + theme(axis.text.x = element_text(color="black", size=20, face="bold")) + theme(axis.title.y = element_text(color="black", size=20, face="bold")) + theme(axis.title.x=element_blank(), axis.text.x =element_blank(), axis.title.y=element_blank()) + theme(plot.title = element_text(color="#000000",face="bold",  size=20)) + ggtitle(expression(bold(paste("Drought response"))))+ geom_point(data=subset(gwas_bslmm_diff_wue_final, is_highlight=="yes"), color="dark red", size=2) + geom_label_repel(aes(BPcum, gamma, label= label), fontface = 'italic', color = 'dark red', size =4, box.padding = unit(0.35, "lines"), point.padding = unit(0.5, "lines"), segment.color = 'grey50',max.overlaps = Inf)
+
+plot_gwas_bslmm_diff_wue
+
+```
+
+### 3- Average WUE (GEMMA-LMM)
+```{r, message=FALSE, warning=FALSE, fig.width= 10, fig.height= 7, class.source = 'fold-show'}
+
+#==============================================================================
+# Load the gemma-lmm output (association file)
+#==============================================================================
+gwas_lmm_avg_wue <- read.table(file = "Average_WUE_LMM_Assoc.txt", header = TRUE, sep = "\t")
+
+#==============================================================================
+# Reformat
+#==============================================================================
+gwas_lmm_avg_wue %>% dplyr::rename(SNP = rs, BP = ps, P = p_lrt) -> gwas_lmm_avg_wue
+gwas_lmm_avg_wue$SNP <- gsub("[:,]", "_", gwas_lmm_avg_wue$SNP)
+gwas_lmm_avg_wue$CHR <- substr(gwas_lmm_avg_wue$SNP,4,4)
+gwas_lmm_avg_wue$CHR <- as.numeric(as.character(gwas_lmm_avg_wue$CHR))
+gwas_lmm_avg_wue <- dplyr::arrange(gwas_lmm_avg_wue,CHR,order(BP))
+gwas_lmm_avg_wue <- gwas_lmm_avg_wue %>% dplyr::select(CHR, BP, SNP, allele1, allele0, af, beta, se, P)
+
+#==============================================================================
+# Merge with annotations
+#==============================================================================
+gwas_lmm_avg_wue_total <- merge(gwas_lmm_avg_wue,snpeff_ann2,by=c("CHR", "BP"))
+gwas_lmm_avg_wue_total <- gwas_lmm_avg_wue_total[order(gwas_lmm_avg_wue_total$P) ,  ]
+dup_BP <-gwas_lmm_avg_wue_total$BP
+dup_GeneName <-gwas_lmm_avg_wue_total$GeneName
+gwas_lmm_avg_wue_total <-cbind(gwas_lmm_avg_wue_total,dup_BP, dup_GeneName)
+gwas_lmm_avg_wue_total<-gwas_lmm_avg_wue_total %>% unite(label, dup_GeneName, dup_BP, sep = " | BP:")
+
+#==============================================================================
+# Visualization
+#==============================================================================
+MPK12SNPVariant= "Chr2_18947614" # Highlight MPK12 G53R
+
+gwas_lmm_avg_wue_final <- gwas_lmm_avg_wue_total %>% dplyr::group_by(CHR) %>% dplyr::summarise(chr_len=max(BP)) %>% dplyr::mutate(tot=cumsum(chr_len)-chr_len) %>% dplyr::select(-chr_len) %>% left_join(gwas_lmm_avg_wue_total, ., by=c("CHR"="CHR")) %>% dplyr::arrange(CHR, BP) %>% dplyr::mutate( BPcum=BP+tot) %>% dplyr::mutate( is_highlight=ifelse(SNP %in% MPK12SNPVariant, "yes", "no")) %>% dplyr::mutate( is_annotate=ifelse(SNP %in% MPK12SNPVariant, "yes", "no"))
+
+axisdf = gwas_lmm_avg_wue_final %>% dplyr::group_by(CHR) %>% dplyr::summarise(center=( max(BPcum) + min(BPcum) ) / 2 )
+
+plot_gwas_lmm_avg_wue <- gwas_lmm_avg_wue_final %>% dplyr::mutate(quadrant = case_when(is_annotate=="yes"   ~ "Q1")) %>% dplyr::mutate(label = case_when(is_annotate=="yes"  ~  paste(GeneName))) %>% ggplot( aes(x=BPcum, y=-log10(P))) + geom_point( aes(color=as.factor(CHR)), alpha=0.4, size=3) + scale_color_manual(values = rep(c("#999999", "#9999CC"), 5 )) + geom_hline(yintercept = -log10(0.05/length(gwas_lmm_avg_wue_final$CHR)), color = "#A9A9A9", linetype = "longdash")+ scale_x_continuous(labels=c("1" = "Chr1", "2" = "Chr2","3" = "Chr3","4" = "Chr4","5" = "Chr5"), breaks= axisdf$center)+ scale_y_continuous(limits = c(0, 12)) + theme(legend.position = "none")+ theme(axis.line = element_line(size=1, colour = "black"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_rect(colour = "black", fill=NA, size=1), panel.background = element_blank(), axis.ticks.length=unit(0.3,"cm")) + theme(panel.background = element_rect(fill = 'white')) + ylab(expression(bold(paste(-log["10"] ~ bolditalic("P"))))) + theme(axis.text.y = element_text(color="black", size=20, face="bold")) + theme(axis.text.x = element_text(color="black", size=20, face="bold")) + theme(axis.title.y = element_text(color="black", size=20, face="bold")) + theme(axis.title.x=element_blank())+ theme(plot.title = element_text(color="#000000",face="bold",  size=20)) + ggtitle(expression(bold(paste("Average WUE")))) + geom_point(data=subset(gwas_lmm_avg_wue_final, is_highlight=="yes"), color="dark red", size=2)+ geom_label_repel(aes(BPcum, -log10(P), label= label), fontface = 'italic', color = 'dark red', size =4, box.padding = unit(0.35, "lines"), point.padding = unit(0.5, "lines"), segment.color = 'grey50',max.overlaps = Inf)
+  
+plot_gwas_lmm_avg_wue
+
+```
+
+### 4- Drought response of WUE (GEMMA-LMM)
+```{r, message=FALSE, warning=FALSE, fig.width= 10, fig.height= 7, class.source = 'fold-show'}
+
+#==============================================================================
+# Load the gemma-lmm output (association file)
+#==============================================================================
+gwas_lmm_diff_wue <- read.table(file = "DroughtResponse_WUE_LMM_Assoc.txt", header = TRUE, sep = "\t")
+
+#==============================================================================
+# Reformat
+#==============================================================================
+gwas_lmm_diff_wue %>% dplyr::rename(SNP = rs, BP = ps, P = p_lrt) -> gwas_lmm_diff_wue
+gwas_lmm_diff_wue$SNP <- gsub("[:,]", "_", gwas_lmm_diff_wue$SNP)
+gwas_lmm_diff_wue$CHR <- substr(gwas_lmm_diff_wue$SNP,4,4)
+gwas_lmm_diff_wue$CHR <- as.numeric(as.character(gwas_lmm_diff_wue$CHR))
+gwas_lmm_diff_wue <- dplyr::arrange(gwas_lmm_diff_wue,CHR,order(BP))
+gwas_lmm_diff_wue <- gwas_lmm_diff_wue %>% dplyr::select(CHR, BP, SNP, allele1, allele0, af, beta, se, P)
+
+#==============================================================================
+# Merge with annotations
+#==============================================================================
+gwas_lmm_diff_wue_total <- merge(gwas_lmm_diff_wue,snpeff_ann2,by=c("CHR", "BP"))
+gwas_lmm_diff_wue_total <- gwas_lmm_diff_wue_total[order(gwas_lmm_diff_wue_total$P) ,  ]
+dup_BP <-gwas_lmm_diff_wue_total$BP
+dup_GeneName <-gwas_lmm_diff_wue_total$GeneName
+gwas_lmm_diff_wue_total <-cbind(gwas_lmm_diff_wue_total,dup_BP, dup_GeneName)
+gwas_lmm_diff_wue_total<-gwas_lmm_diff_wue_total %>% unite(label, dup_GeneName, dup_BP, sep = " | BP:")
+
+#==============================================================================
+# Visualization
+#==============================================================================
+MPK12SNPVariant= "Chr2_18947614" # Highlight MPK12 G53R
+
+gwas_lmm_diff_wue_final <- gwas_lmm_diff_wue_total %>% dplyr::group_by(CHR) %>% dplyr::summarise(chr_len=max(BP)) %>% dplyr::mutate(tot=cumsum(chr_len)-chr_len) %>% dplyr::select(-chr_len) %>% left_join(gwas_lmm_diff_wue_total, ., by=c("CHR"="CHR")) %>% dplyr::arrange(CHR, BP) %>% dplyr::mutate( BPcum=BP+tot) %>% dplyr::mutate( is_highlight=ifelse(SNP %in% MPK12SNPVariant, "yes", "no")) %>% dplyr::mutate( is_annotate=ifelse(SNP %in% MPK12SNPVariant, "yes", "no"))
+
+axisdf = gwas_lmm_diff_wue_final %>% dplyr::group_by(CHR) %>% dplyr::summarise(center=( max(BPcum) + min(BPcum) ) / 2 )
+
+plot_gwas_lmm_diff_wue <- gwas_lmm_diff_wue_final %>% dplyr::mutate(quadrant = case_when(is_annotate=="yes" ~ "Q1")) %>% dplyr::mutate(label = case_when(is_annotate=="yes" ~ paste(GeneName))) %>% ggplot( aes(x=BPcum, y=-log10(P))) + geom_point( aes(color=as.factor(CHR)), alpha=0.4, size=3) + scale_color_manual(values = rep(c("#999999", "#9999CC"), 5 )) + geom_hline(yintercept = -log10(0.05/length(gwas_lmm_diff_wue_final$CHR)), color = "#A9A9A9", linetype = "longdash") + scale_x_continuous(labels=c("1" = "Chr1", "2" = "Chr2","3" = "Chr3","4" = "Chr4","5" = "Chr5"), breaks= axisdf$center) + scale_y_continuous(limits = c(0, 5)) + theme(legend.position = "none") + theme(axis.line = element_line(size=1, colour = "black"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_rect(colour = "black", fill=NA, size=1), panel.background = element_blank(), axis.ticks.length=unit(0.3,"cm")) + theme(panel.background = element_rect(fill = 'white')) + ylab(expression(bold(paste(-log["10"] ~ bolditalic("P"))))) + theme(axis.text.y = element_text(color="black", size=20, face="bold")) + theme(axis.text.x = element_text(color="black", size=20, face="bold")) + theme(axis.title.y = element_text(color="black", size=20, face="bold")) + theme(axis.title.x=element_blank(), axis.title.y=element_blank())+ theme(plot.title = element_text(color="#000000",face="bold",  size=20)) + ggtitle(expression(bold(paste("Drought response")))) + geom_point(data=subset(gwas_lmm_diff_wue_final, is_highlight=="yes"), color="dark red", size=2) + geom_label_repel(aes(BPcum, -log10(P), label= label), fontface = 'italic', color = 'dark red', size =4, box.padding = unit(0.35, "lines"), point.padding = unit(0.5, "lines"), segment.color = 'grey50',max.overlaps = Inf)
+
+plot_gwas_lmm_diff_wue
+
+```
+
+### 5- Combine all panels and create Figure3
+```{r, message=FALSE, warning=FALSE, fig.width= 15, fig.height= 8, class.source = 'fold-show'}
+
+plot_grid(plot_gwas_bslmm_avg_wue,plot_gwas_bslmm_diff_wue,plot_gwas_lmm_avg_wue,plot_gwas_lmm_diff_wue, greedy = TRUE, ncol = 2, nrow = 2, align = 'v', hjust=0, label_size=5)
+
+ggsave(file = "Figure3.pdf", width = 15, height = 8, units = "in", encoding="MacRoman")
+plot_grid(plot_gwas_bslmm_avg_wue,plot_gwas_bslmm_diff_wue,plot_gwas_lmm_avg_wue,plot_gwas_lmm_diff_wue, greedy = TRUE, ncol = 2, nrow = 2, align = 'v', hjust=0, label_size=5)
+dev.off()
+
+```
+
