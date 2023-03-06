@@ -1,0 +1,169 @@
+---
+title: "Figure 6. Signature of a partial selective sweep at MPK12 G53R"
+author: "Ahmed Elfarargi"
+date: "2023-01-31"
+output: html_notebook
+---
+
+## Load required R libraries
+```{r setup, include=TRUE, message=FALSE, warning=FALSE,}
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(ggmap)
+library(raster)
+library(rehh)
+```
+
+### Figure 6A - The decay of extended haplotype homozygosity (EHH) 
+```{r, message=FALSE, warning=FALSE, fig.width= 4, fig.height= 4, class.source = 'fold-show'}
+
+#==============================================================================
+# Data input (haplohh data)
+#==============================================================================
+SA_chr2 <- data2haplohh(hap_file = "SA_SHORE_filtered_Chr2.vcf.gz", polarize_vcf = FALSE)
+
+#==============================================================================
+# Plot Figure 6A
+#==============================================================================
+plot(calc_ehh(SA_chr2, mrk = "Chr2_18947614_C_G", include_nhaplo = TRUE), xlim = c(1.85E7, 1.95E7), col = c("#68228B","#FFB90F"), main="", xlab="Position on Chromosome 2 (Mb)", ylab=expression(italic("EHH")))
+
+#==============================================================================
+# Save figure6a
+#==============================================================================
+pdf(file = "Figure6A.pdf", width = 4, height = 4)
+par(mar = (c(4, 4, 0, 0)))
+plot(calc_ehh(SA_chr2, mrk = "Chr2_18947614_C_G", include_nhaplo = TRUE), xlim = c(1.85E7, 1.95E7), col = c("#68228B","#FFB90F"), main="", xlab="Position on Chromosome 2 (Mb)", ylab=expression(italic("EHH")))
+dev.off()
+
+```
+
+### Figure 6B - Bifurcation analysis of the ancestral and derived alleles for MPK12 G53R
+```{r, message=FALSE, warning=FALSE, fig.width= 6, fig.height= 4, class.source = 'fold-show'}
+
+#==============================================================================
+# Bifurcation analysis
+#==============================================================================
+f_mpk12 <- calc_furcation(SA_chr2, mrk = "Chr2_18947614_C_G")
+
+#==============================================================================
+# Plot Figure 6B
+#==============================================================================
+plot(f_mpk12, lwd = 0.1, col = c("#68228B","#FFB90F"), hap.names = NULL, legend.xy.coords = c(10000, 1.19), xlim = c(1.75E7, 1.99E7), main="", xlab="Position on Chromosome 2 (Mb)")
+
+#==============================================================================
+# Save figure6b
+#==============================================================================
+pdf(file = "Figure6B.pdf", width = 6, height = 4)
+par(mar = (c(4, 0, 0, 0)))
+plot(f_mpk12, lwd = 0.1, col = c("#68228B","#FFB90F"), hap.names = NULL, legend.xy.coords = c(10000, 1.19), xlim = c(1.75E7, 1.99E7), main="", xlab="Position on Chromosome 2 (Mb)")
+dev.off()
+
+```
+
+### Figure 6C - Genome-wide integrated haplotype score (iHS) analysis for the Santo Antão population
+```{r, message=FALSE, warning=FALSE, fig.width= 12, fig.height= 4,class.source = 'fold-show'}
+
+#==============================================================================
+# Data input (haplohh data)
+#==============================================================================
+SA_chr1 <- data2haplohh(hap_file = "SA_SHORE_filtered_Chr1.vcf.gz", polarize_vcf = FALSE)
+SA_chr2 <- data2haplohh(hap_file = "SA_SHORE_filtered_Chr2.vcf.gz", polarize_vcf = FALSE)
+SA_chr3 <- data2haplohh(hap_file = "SA_SHORE_filtered_Chr3.vcf.gz", polarize_vcf = FALSE)
+SA_chr4 <- data2haplohh(hap_file = "SA_SHORE_filtered_Chr4.vcf.gz", polarize_vcf = FALSE)
+SA_chr5 <- data2haplohh(hap_file = "SA_SHORE_filtered_Chr5.vcf.gz", polarize_vcf = FALSE)
+
+#==============================================================================
+# Calculation of EHH and integration
+#==============================================================================
+SA_scan_chr1 <- scan_hh(SA_chr1, limhaplo = 2, limhomohaplo = 2, limehh = 0.05, limehhs = 0.05, phased = TRUE, polarized = TRUE, scalegap = NA, maxgap = NA, discard_integration_at_border = FALSE, lower_ehh_y_bound = 0, lower_ehhs_y_bound = 0, threads = 1)
+SA_scan_chr2 <- scan_hh(SA_chr2, limhaplo = 2, limhomohaplo = 2, limehh = 0.05, limehhs = 0.05, phased = TRUE, polarized = TRUE, scalegap = NA, maxgap = NA, discard_integration_at_border = FALSE, lower_ehh_y_bound = 0, lower_ehhs_y_bound = 0, threads = 1)
+SA_scan_chr3 <- scan_hh(SA_chr3, limhaplo = 2, limhomohaplo = 2, limehh = 0.05, limehhs = 0.05, phased = TRUE, polarized = TRUE, scalegap = NA, maxgap = NA, discard_integration_at_border = FALSE, lower_ehh_y_bound = 0, lower_ehhs_y_bound = 0, threads = 1)
+SA_scan_chr4 <- scan_hh(SA_chr4, limhaplo = 2, limhomohaplo = 2, limehh = 0.05, limehhs = 0.05, phased = TRUE, polarized = TRUE, scalegap = NA, maxgap = NA, discard_integration_at_border = FALSE, lower_ehh_y_bound = 0, lower_ehhs_y_bound = 0, threads = 1)
+SA_scan_chr5 <- scan_hh(SA_chr5, limhaplo = 2, limhomohaplo = 2, limehh = 0.05, limehhs = 0.05, phased = TRUE, polarized = TRUE, scalegap = NA, maxgap = NA, discard_integration_at_border = FALSE, lower_ehh_y_bound = 0, lower_ehhs_y_bound = 0, threads = 1)
+
+#==============================================================================
+# Log ratio for alleles and normalization
+#==============================================================================
+ihs_SA_chr1 <- ihh2ihs(SA_scan_chr1)
+ihs_SA_chr2 <- ihh2ihs(SA_scan_chr2)
+ihs_SA_chr3 <- ihh2ihs(SA_scan_chr3)
+ihs_SA_chr4 <- ihh2ihs(SA_scan_chr4)
+ihs_SA_chr5 <- ihh2ihs(SA_scan_chr5)
+ihs_SA_gw <- rbind(ihs_SA_chr1$ihs, ihs_SA_chr2$ihs, ihs_SA_chr3$ihs, ihs_SA_chr4$ihs, ihs_SA_chr5$ihs)
+
+#==============================================================================
+# Merge with annotations and reformatting
+#==============================================================================
+snpeff_ann = read_csv("VCF_snpEff_annotation_variants.csv", col_names = FALSE)
+snpeff_ann2 <- snpeff_ann %>% dplyr::rename(CHR = X1, BP = X2, REF = X3, ALT = X4, VariantType = X5, Impact = X6, GeneName = X7, GeneCode = X8)
+snpeff_ann2$CHR <- gsub("Chr", "", snpeff_ann2$CHR)
+ihs_SA_gw %>% dplyr::rename(BP = POSITION) -> ihs_SA_gw_table
+ihs_SA_gw_table$CHR <- as.numeric(as.character(ihs_SA_gw_table$CHR))
+ihs_SA_gw_table$BP <- as.numeric(as.character(ihs_SA_gw_table$BP))
+ihs_SA_gw_table_ann <- merge(ihs_SA_gw_table,snpeff_ann2,by=c("CHR", "BP"))
+ihs_SA_gw_table_ann <- ihs_SA_gw_table_ann[order(-ihs_SA_gw_table_ann$LOGPVALUE),]
+ihs_SA_gw_table_ann_plot <- ihs_SA_gw_table_ann %>% dplyr::rename(SNP = GeneName, P = LOGPVALUE)
+snpsOfInterest="18947614"
+ihs_SA_gw_table_ann_plot2 <- ihs_SA_gw_table_ann_plot %>% dplyr::group_by(CHR) %>% dplyr::summarise(chr_len=max(BP)) %>% dplyr::mutate(tot=cumsum(chr_len)-chr_len) %>% dplyr::select(-chr_len) %>% left_join(ihs_SA_gw_table_ann_plot, ., by=c("CHR"="CHR")) %>% dplyr::arrange(CHR, BP) %>% dplyr::mutate( BPcum=BP+tot) %>% dplyr::mutate( is_highlight=ifelse(BP %in% snpsOfInterest, "yes", "no")) %>% dplyr::mutate( is_annotate=ifelse(BP %in% snpsOfInterest, "yes", "no"))
+axisdf = ihs_SA_gw_table_ann_plot2 %>% dplyr::group_by(CHR) %>% dplyr::summarise(center=( max(BPcum) + min(BPcum))/2)
+quantile(ihs_SA_gw_table_ann_plot2$P,na.rm=T,c(0.95,0.99))
+quantile99 <- (1.759836)
+
+#==============================================================================
+# Plot Figure 6C
+#==============================================================================
+Figure6C <- ihs_SA_gw_table_ann_plot2 %>% dplyr::mutate(quadrant = case_when(is_highlight== "yes" ~ "Q1")) %>% dplyr::mutate(Genename = case_when(is_highlight== "yes"  ~  paste(SNP))) %>% ggplot( aes(x=BPcum, y=P)) + geom_point( aes(color=as.factor(CHR)), alpha=0.4, size=3) + scale_color_manual(values = rep(c("#3399FF","#A0A0A0"), 5 )) + geom_hline(yintercept = quantile99, color = "#A9A9A9", linetype = "longdash") + geom_hline(yintercept = 2, color = "#A9A9A9", linetype = "solid") + scale_x_continuous(labels=c("1" = "Chr1", "2" = "Chr2","3" = "Chr3","4" = "Chr4","5" = "Chr5"), breaks= axisdf$center) + scale_y_continuous(limits = c(0, 5)) + theme(legend.position = "none") + theme(axis.line = element_line(size=1, colour = "black"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_rect(colour = "black", fill=NA, size=1), panel.background = element_blank(), axis.ticks.length=unit(0.3,"cm")) + theme(panel.background = element_rect(fill = 'white')) + ylab(expression(paste(-log["10"]~"[2"~phi~" - "["|iHS|"]~"]"))) + theme(axis.text.y = element_text(color="black", size=20)) + theme(axis.text.x = element_text(color="black", size=20)) + theme(axis.title.y = element_text(color="black", size=20)) + theme(axis.title.x=element_blank()) + theme(plot.title = element_text(color="#000000",  size=20)) + geom_label_repel(aes(BPcum, P, label = Genename), fontface = 'italic', color = 'dark red', size =4, box.padding = unit(0.35, "lines"), point.padding = unit(0.5, "lines"), segment.color = 'grey50',max.overlaps = Inf) + geom_point(data=subset(ihs_SA_gw_table_ann_plot2, is_highlight=="yes"), color="dark red", size=2)
+
+Figure6C
+
+#==============================================================================
+# Save figure6c
+#==============================================================================
+ggsave(file = "Figure6C.pdf", height=4, width = 12, units = "in", encoding="MacRoman")
+Figure6C
+dev.off()
+
+```
+
+### Figure 6D - Geographic distribution of Santo Antão A. thaliana individuals overlaid on the max temperature of warmest month (BIO5)
+```{r, message=FALSE, warning=FALSE, fig.width= 10, fig.height= 7, class.source = 'fold-show'}
+
+#==============================================================================
+# Read data
+#==============================================================================
+# Coordinates for Santo Antão individuals
+santo_coord <- read.table("SANTO_coordinates.csv", header = TRUE, sep = ",")
+
+# Read raster file for BIO5 = Max Temperature of Warmest Month
+bio5.yr <- raster("wc2.1_30s_bio_5.tif")
+
+# Crop raster files for Santo Antão island
+SA.crop <- c(-25.1, -25.01, 17.09, 17.125)
+bio5.yr.c <- crop(bio5.yr, SA.crop)
+bio5.yr.c_spdf <- as(bio5.yr.c, "SpatialPixelsDataFrame")
+bio5.yr.c_df <- as.data.frame(bio5.yr.c_spdf)
+colnames(bio5.yr.c_df) <- c("value", "x", "y")
+
+# Draw the map
+lat <- c(17.09, 17.125)
+lon <- c(-25.1, -25.01)
+bbox <- ggmap::make_bbox(lon = lon, lat = lat, f = 0)
+SANTO_MAP <- get_stamenmap(bbox, zoom = 15, maptype = "toner-background")
+
+#==============================================================================
+# Plot Figure 6D
+#==============================================================================
+Figure6D <-  ggmap(SANTO_MAP)+ geom_tile(data=bio5.yr.c_df, aes(x=x, y=y, fill=value), alpha=0.8) + scale_fill_steps(n.breaks = 15, low = "grey", high = "brown") + guides(fill=guide_legend(title="BIO5")) + labs(x = 'Longitude', y = 'Latitude') + geom_point(aes(x = santo_coord$Long, y = santo_coord$Lat, col=santo_coord$Cluster, shape=MPK12, cex = .8), data = santo_coord, alpha = 1, size = 3, show.legend = F) + scale_colour_manual(values = c("#0075DC", "yellow4", "#C20088", "#2BCE48", "#F0A3FF")) + scale_shape_manual(values = c("Ancestral" = 16,'Derived' = 17)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + theme_light() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank(), panel.background = element_rect(fill = 'transparent', colour = "white"), legend.position = "right", plot.background = element_rect(fill='transparent', color=NA), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(), plot.margin = grid::unit(c(0,0,0,0), "cm")) + annotate(geom="text", x=-25.085, y=17.12, label="Espongeiro", color="black", size = 5) + annotate(geom="text", x=-25.076, y=17.101, label="Ribeira", color="black", size = 5) + annotate(geom="text", x=-25.060, y=17.10, label="Cova", color="black", size = 5) + annotate(geom="text", x=-25.040, y=17.098, label="Figueira", color="black", size = 5) + annotate(geom="text", x=-25.02, y=17.104, label="Pico", color="black", size = 5)
+
+Figure6D
+
+#==============================================================================
+# Save figure6d
+#==============================================================================
+ggsave(file = "Figure6D.pdf", width = 8, height = 4, units = "in", encoding="MacRoman") 
+Figure6D
+dev.off()
+
+```
+
